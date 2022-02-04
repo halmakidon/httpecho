@@ -3,9 +3,13 @@ package main
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 )
+
+import "github.com/kelseyhightower/envconfig"
 
 func writeRow(sb *strings.Builder, key string, values ...string) {
 	sb.WriteString("<tr>")
@@ -23,11 +27,16 @@ func writeRow(sb *strings.Builder, key string, values ...string) {
 }
 
 func main() {
+	config := &Config{}
+	envconfig.MustProcess("", config)
+
+	a := &Action{config: config}
+
 	m := http.NewServeMux()
-	m.HandleFunc("/", handleRequest)
+	m.HandleFunc("/", a.handleRequest)
 
 	s := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":" + strconv.Itoa(config.Port),
 		Handler: m,
 	}
 	err := s.ListenAndServe()
@@ -36,7 +45,11 @@ func main() {
 	}
 }
 
-func handleRequest(w http.ResponseWriter, r *http.Request) {
+type Action struct {
+	config *Config
+}
+
+func (a *Action) handleRequest(w http.ResponseWriter, r *http.Request) {
 	sb := &strings.Builder{}
 
 	p := r.URL.Path
@@ -55,6 +68,25 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	sb.WriteString("</table>")
 
+	if a.config.OidcJwtService != "" {
+		oidcdata := r.Header.Get("X-Amzn-Oidc-Data")
+		if oidcdata != "" {
+			resp, err := http.Post(a.config.OidcJwtService, "text/plain", strings.NewReader(oidcdata))
+			sb.WriteString("<pre>")
+			if err != nil {
+				sb.WriteString(err.Error())
+			} else {
+				body, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					sb.WriteString(err.Error())
+				} else {
+					defer resp.Body.Close()
+					sb.Write(body)
+				}
+			}
+			sb.WriteString("</pre>")
+		}
+	}
 	_, err := w.Write([]byte(sb.String()))
 	if err != nil {
 		fmt.Printf("%+v", errors.WithStack(err))

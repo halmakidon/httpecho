@@ -5,7 +5,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /go/bin/main main.go
+RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /go/bin/main
 
 FROM scratch as runner
 COPY --from=builder /go/bin/main /app/main
